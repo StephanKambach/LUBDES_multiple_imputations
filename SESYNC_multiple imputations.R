@@ -38,18 +38,8 @@ dat.raw$control_se = dat.raw$control_sd / sqrt(dat.raw$control_n)
 dat.raw$treat_se = dat.raw$treat_sd / sqrt(dat.raw$treat_n)
 
 
-
-#############################################
-# all possible imputations in mice ----------
-
-#possible imputations 
-# c("pmm","norm","norm.nob","norm.boot","norm.predict","mean","2l.norm","2l.pan",
-#   "2lonly.mean","2lonly.norm","2lonly.pmm","quadratic","logreg","logreg.boot",
-#  "polyreg","polr","lda","cart","rf","ri")
-
 #############################################
 # functions ---------------------------------
-
 
 create.data.subset.function = function(data,data.sample.size.percentage){
   data.sample.rows = sample(c(1:nrow(data)),nrow(data) * data.sample.size.percentage)
@@ -63,19 +53,22 @@ delete.function = function(dat.vector,deletion.rate,deletion.chance.vector){
 }
 
 impute.function =function(data.with.missing,column.name.with.missing.values,imputation.method){
+  if(!(imputation.method %in% "na.omit")){
   data.complete = complete(mice(data.with.missing,method = imputation.method,
-                                m=5, maxit =20, printFlag = FALSE))
-  return(as.vector(data.complete[,which(names(data.complete) %in% column.name.with.missing.values)]))
+                                m=5, maxit =20, printFlag = FALSE))$treat_sd
+  }else{
+    data.complete = data.with.missing$treat_sd}
+  return(data.complete)
 }
 
 effect.size.calculation.function = function(data, effect.size.metric){
-  effect.sizes = escalc(measure = effect.size.metric, data= data, append = TRUE,
+  effect.sizes = escalc(measure = effect.size.metric, data= data, append = FALSE,
                         m1i = treat_mean, n1i = treat_n, sd1i = treat_sd, m2i = control_mean, n2i = control_n, sd2i = control_sd)
   return(effect.sizes)
 }
 
 meta_analysis.function = function(data){
-  rma.temp = rma.uni(yi=data$yi,vi=data$vi,method="ML")
+  rma.temp = rma.uni(yi=data$yi,vi=data$vi,method="REML")
   rma.temp.results = data.frame("grand_mean" = rma.temp$b[1],
                                 "grand_mean_lb" = rma.temp$ci.lb[1],
                                 "grand_mean_ub" = rma.temp$ci.ub[1],
@@ -84,7 +77,7 @@ meta_analysis.function = function(data){
 }
 
 one.run.of.grand.mean.calculation.function = function(dat.temp, data.sample.size.percentage, del.rate.temp,
-                                                      deletion.chance.slope,imputation.method.temp,effect.size.metric.temp){
+                                                      deletion.chance.slope,imputation.method.temp,effect.size.metric){
   
   dat.temp =dat.raw
   dat.temp = create.data.subset.function(dat.temp,data.sample.size.percentage)
@@ -93,14 +86,44 @@ one.run.of.grand.mean.calculation.function = function(dat.temp, data.sample.size
   dat.temp$treat_sd = delete.function(dat.vector = dat.temp$treat_sd,
                                          deletion.rate = del.rate.temp,
                                          deletion.chance.vector = del.chance.vector.temp)
-  dat.temp$treat_sd = impute.function(data.with.missing = dat.temp[,c("biodiv_aspect","treat_mean","treat_sd","treat_n")],
+  treat_sd.temp = tryCatch({
+    impute.function(data.with.missing = dat.temp[,c("biodiv_aspect","treat_mean","treat_sd","treat_n")],
                                          column.name.with.missing.values = "treat_sd",
                                          imputation.method = imputation.method.temp)
+  },error = function(e){
+    return(NA)  
+  })
+  
+  if(length(treat_sd.temp) == 1){
+    dat.temp$treat_sd = NA
+  }else{
+    dat.temp$treat_sd = treat_sd.temp
+  }
+  
   dat.temp = dat.temp[which(dat.temp$treat_sd >= 0),]
-  dat.temp = effect.size.calculation.function(data = dat.temp,
-                                                 effect.size.metric = effect.size.metric.temp)
-  dat.temp = dat.temp[which(!(dat.temp$vi == 0)),]
-  data.missing.rma.results = meta_analysis.function(dat.temp)
+  
+  effect.sizes.temp = tryCatch({
+    effect.size.calculation.function(data = dat.temp,effect.size.metric = effect.size.metric)
+  }, error = function(e){
+      return(NA)
+    })
+  
+  if(length(effect.sizes.temp) == 1){
+    effect.sizes.temp = data.frame("vi"=rep(NA, nrow(dat.temp)),"yi"=rep(NA, nrow(dat.temp)))}
+  
+  #effect.sizes.temp = effect.sizes.temp[which(!(effect.sizes.temp$vi == 0)),] # probably not neccessary
+  
+  data.missing.rma.results = tryCatch({
+    meta_analysis.function(effect.sizes.temp)
+  }, error = function(e){
+    return(NA) 
+  })
+  
+  if(length(data.missing.rma.results) == 1){
+    data.missing.rma.results =  data.frame("grand_mean" = NA,
+                                           "grand_mean_lb" = NA,
+                                           "grand_mean_ub" = NA,
+                                           "sample_size_for_rma_calc" = NA)}
   
   data.size.temp <<- nrow(dat.temp)
   return(data.missing.rma.results)
@@ -109,7 +132,7 @@ one.run.of.grand.mean.calculation.function = function(dat.temp, data.sample.size
 
 one.complete.imp.method.run = function(dat.raw,data.sample.size.percentage, imputation.method.temp,
                                        deletion.chance.slope, deletion.minimum, deletion.maximum, 
-                                       deletion.step, repetitions.per.step){
+                                       deletion.step, repetitions.per.step,effect.size.metric){
   
   del.rate.vector = sort(rep(seq(from = deletion.minimum,to=deletion.maximum,by = deletion.step),repetitions.per.step))
   
@@ -126,7 +149,7 @@ one.complete.imp.method.run = function(dat.raw,data.sample.size.percentage, impu
                             del.rate.temp = del.rate.temp,
                             deletion.chance.slope = deletion.chance.slope,
                             imputation.method.temp = imputation.method.temp,
-                            effect.size.metric.temp = effect.size.metric.temp)
+                            effect.size.metric = effect.size.metric)
   
   result.df.one.run = data.frame("deletion_rate"= del.rate.temp,
                                  "grand_mean"= result.one.run$grand_mean,
@@ -135,7 +158,7 @@ one.complete.imp.method.run = function(dat.raw,data.sample.size.percentage, impu
                                  "sample_size_for_rma_calc"=result.one.run$sample_size_for_rma_calc)
   
   result.df.one.imp.method = rbind(result.df.one.imp.method,result.df.one.run)
-  print(del.rate.temp)
+  print(paste(del.rate.temp,imputation.method.temp,collapse="-"))
   }
   return(result.df.one.imp.method)
 }
@@ -156,7 +179,8 @@ run.over.all.methods = function(dat.raw , data.sample.size.percentage, imp.metho
                                                            deletion.maximum = deletion.maximum,
                                                            deletion.step = deletion.step,
                                                            repetitions.per.step = repetitions.per.step,
-                                                           deletion.chance.slope = deletion.chance.slope)
+                                                           deletion.chance.slope = deletion.chance.slope,
+                                                           effect.size.metric = effect.size.metric)
     
     result.df.one.imp.method$imputation_method = method.temp
     result.df.one.imp.method$data_size = data.sample.size.percentage
@@ -171,24 +195,75 @@ run.over.all.methods = function(dat.raw , data.sample.size.percentage, imp.metho
 #############################################
 # config algorithm --------------------------
 
-test = run.over.all.methods(dat.raw = dat.raw,
+#non-random deletion, 100% sample size
+
+df.final = run.over.all.methods(dat.raw = dat.raw,
                             data.sample.size.percentage = 1,
-                            imp.methods.vector = c("pmm","norm.predict","mean"),
+                            imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf"),
                             deletion.chance.slope = 1,
-                            deletion.minimum = 0.1, 
-                            deletion.maximum = 0.5,
-                            deletion.step = 0.05,
+                            deletion.minimum = 0.2, 
+                            deletion.maximum = 0.98,
+                            deletion.step = 0.01,
                             repetitions.per.step = 2, 
-                            data.size = 0.5,
+                            data.size = 1,
                             effect.size.metric = "ROM")
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_non_random_full_data.csv",
+            sep="\t",quote=F,dec=".",row.names = FALSE)
+
+test = df.final$grand_mean_ub - df.final$grand_mean_lb
+plot(test ~ factor(df.final$imputation_method))
+
+
+
 
 #############################################
-# test area ---------------------------------
+# all local variables in use - for debu -----
+dat.raw = dat.raw
+data.sample.size.percentage = 1
+imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf")
+deletion.chance.slope = 1
+deletion.minimum = 0.1
+deletion.maximum = 0.9
+deletion.step = 0.1
+repetitions.per.step = 0.1 
+data.size = 1
+effect.size.metric = "ROM"
+
+dat.raw = dat.raw
+data.sample.size.percentage = data.sample.size.percentage
+imputation.method.temp = method.temp
+deletion.minimum = deletion.minimum
+deletion.maximum = deletion.maximum
+deletion.step = deletion.step
+repetitions.per.step = repetitions.per.step
+deletion.chance.slope = deletion.chance.slope
+effect.size.metric = effect.size.metric
+
+del.rate.temp = 0.5
+dat.temp =dat.raw
+data.sample.size.percentage = data.sample.size.percentage
+del.rate.temp = del.rate.temp
+deletion.chance.slope = deletion.chance.slope
+imputation.method.temp = imputation.method.temp
+effect.size.metric = effect.size.metric
+
+##################################################
+
+
+#############################################
+# all possible imputations in mice ----------
+
+#possible imputations 
+# c("pmm","norm","norm.nob","norm.boot","norm.predict","mean","2l.norm","2l.pan",
+#   "2lonly.mean","2lonly.norm","2lonly.pmm","quadratic","logreg","logreg.boot",
+#  "polyreg","polr","lda","cart","rf","ri")
+
+
 
 #correct.results
 dat.full = dat.raw
 dat.full = effect.size.calculation.function(data = dat.full,
-                                            effect.size.metric = effect.size.metric.temp)
+                                            effect.size.metric = effect.size.metric)
 dat.full = dat.full[which(dat.full$vi == 0),]
 
 dat.full.rma.results = meta_analysis.function(dat.full)
