@@ -62,48 +62,20 @@ delete.function = function(dat.vector,deletion.rate,deletion.chance.vector){
   return(dat.vector)
 }
 
-#impute with tryCatch
-#impute.function =function(data.with.missing,column.name.with.missing.values,imputation.method){
-#  treat_sd_imputed = tryCatch({
-#    complete(mice(data.with.missing,method = imputation.method,m=5, maxit =20, printFlag = FALSE))$treat_sd
-#  }, error = function(e){
-#      rep(NA,nrow(data.with.missing))
-#  })
-#  return(treat_sd_imputed)
-#}
-
-
-#impute withour tryCatch
 impute.function =function(data.with.missing,column.name.with.missing.values,imputation.method){
-  treat_sd_imputed =  complete(mice(data.with.missing,method = imputation.method,m=5, maxit =20, printFlag = FALSE))$treat_sd
-  return(treat_sd_imputed)
+  data.complete = complete(mice(data.with.missing,method = imputation.method,
+                                m=5, maxit =20, printFlag = FALSE))
+  return(as.vector(data.complete[,which(names(data.complete) %in% column.name.with.missing.values)]))
 }
 
-
-#effect size with tryCatch
-#effect.size.calculation.function = function(data, effect.size.metric){
-#  
-#  effect.sizes = tryCatch({
-#    escalc(measure = effect.size.metric, data= data, append = FALSE, m1i = treat_mean, n1i = treat_n, 
-#           sd1i = treat_sd, m2i = control_mean, n2i = control_n, sd2i = control_sd)
-#   }, error = function(e){
-#      data.frame(yi=rep(NA,nrow(data)),vi=rep(NA,nrow(data)))
-# })
-#    
-#  return(effect.sizes)
-#}
-
-
-#effect size without tryCatch
 effect.size.calculation.function = function(data, effect.size.metric){
-  
-  effect.sizes =   escalc(measure = effect.size.metric, data= data, append = FALSE, m1i = treat_mean, n1i = treat_n, 
-           sd1i = treat_sd, m2i = control_mean, n2i = control_n, sd2i = control_sd)
-    return(effect.sizes)
+  effect.sizes = escalc(measure = effect.size.metric, data= data, append = TRUE,
+                        m1i = treat_mean, n1i = treat_n, sd1i = treat_sd, m2i = control_mean, n2i = control_n, sd2i = control_sd)
+  return(effect.sizes)
 }
 
 meta_analysis.function = function(data){
-  rma.temp = rma.uni(yi=data$yi,vi=data$vi,method="REML")
+  rma.temp = rma.uni(yi=data$yi,vi=data$vi,method="ML")
   rma.temp.results = data.frame("grand_mean" = rma.temp$b[1],
                                 "grand_mean_lb" = rma.temp$ci.lb[1],
                                 "grand_mean_ub" = rma.temp$ci.ub[1],
@@ -121,25 +93,14 @@ one.run.of.grand.mean.calculation.function = function(dat.temp, data.sample.size
   dat.temp$treat_sd = delete.function(dat.vector = dat.temp$treat_sd,
                                          deletion.rate = del.rate.temp,
                                          deletion.chance.vector = del.chance.vector.temp)
-  if(!(imputation.method.temp %in% "na.omit")){
   dat.temp$treat_sd = impute.function(data.with.missing = dat.temp[,c("biodiv_aspect","treat_mean","treat_sd","treat_n")],
                                          column.name.with.missing.values = "treat_sd",
-                                         imputation.method = imputation.method.temp)}
+                                         imputation.method = imputation.method.temp)
   dat.temp = dat.temp[which(dat.temp$treat_sd >= 0),]
-  dat.temp = cbind(dat.temp,
-                   effect.size.calculation.function(data = dat.temp,effect.size.metric = effect.size.metric.temp))
+  dat.temp = effect.size.calculation.function(data = dat.temp,
+                                                 effect.size.metric = effect.size.metric.temp)
   dat.temp = dat.temp[which(!(dat.temp$vi == 0)),]
-  
-#with tryCatch
-#  data.missing.rma.results = tryCatch({
-#    meta_analysis.function(dat.temp)
-#  }, error = function(e){
-#    data.frame("grand_mean" = NA,"grand_mean_lb" = NA,"grand_mean_ub" = NA,"sample_size_for_rma_calc" = NA)
-#  })
-  
-  #without tryCatch
-  data.missing.rma.results =  meta_analysis.function(dat.temp)
-  
+  data.missing.rma.results = meta_analysis.function(dat.temp)
   
   data.size.temp <<- nrow(dat.temp)
   return(data.missing.rma.results)
@@ -174,7 +135,7 @@ one.complete.imp.method.run = function(dat.raw,data.sample.size.percentage, impu
                                  "sample_size_for_rma_calc"=result.one.run$sample_size_for_rma_calc)
   
   result.df.one.imp.method = rbind(result.df.one.imp.method,result.df.one.run)
-  print(paste(imputation.method.temp,del.rate.temp,collapse="-"))
+  print(del.rate.temp)
   }
   return(result.df.one.imp.method)
 }
@@ -210,20 +171,17 @@ run.over.all.methods = function(dat.raw , data.sample.size.percentage, imp.metho
 #############################################
 # config algorithm --------------------------
 
+test = run.over.all.methods(dat.raw = dat.raw,
+                            data.sample.size.percentage = 1,
+                            imp.methods.vector = c("pmm","norm.predict","mean"),
+                            deletion.chance.slope = 1,
+                            deletion.minimum = 0.1, 
+                            deletion.maximum = 0.5,
+                            deletion.step = 0.05,
+                            repetitions.per.step = 2, 
+                            data.size = 0.5,
+                            effect.size.metric = "ROM")
 
-  test = run.over.all.methods(dat.raw = dat.raw,
-                              data.sample.size.percentage = 1,
-                              imp.methods.vector = c("norm.boot","pmm"),
-                              deletion.chance.slope = 1,
-                              deletion.minimum = 0.2, 
-                              deletion.maximum = 0.5,
-                              deletion.step = 0.04,
-                              repetitions.per.step = 1, 
-                              data.size = 1,
-                              effect.size.metric = "ROM")
-
-
-  
 #############################################
 # test area ---------------------------------
 
