@@ -17,6 +17,7 @@ library(ggplot2)
 library(metafor)
 library(ROCR)
 library(data.table)
+library(plyr)
 
 #############################################
 # read data ---------------------------------
@@ -47,7 +48,7 @@ create.data.subset.function = function(data,data.sample.size.percentage){
 }
 
 delete.function = function(dat.vector,deletion.rate,deletion.chance.vector){
-  dat.to.delete = sample(length(dat.vector), size= round(length(dat.vector) * deletion.rate), prob=deletion.chance.vector)
+  dat.to.delete = sample(seq(1:length(dat.vector)), size= round(length(dat.vector) * deletion.rate), prob=deletion.chance.vector)
   dat.vector[dat.to.delete] = NA
   return(dat.vector)
 }
@@ -81,7 +82,15 @@ one.run.of.grand.mean.calculation.function = function(dat.temp, data.sample.size
   
   dat.temp =dat.raw
   dat.temp = create.data.subset.function(dat.temp,data.sample.size.percentage)
-  del.chance.vector.temp = dat.temp$treat_mean * deletion.chance.slope
+  dat.temp = dat.temp[order(sqrt(log(dat.temp$treat_mean / dat.temp$control_mean)^2),decreasing=F),]
+  
+  
+  # build vector with chances of deletion based on log response ratio:
+  # zero - same chance for every study case
+  # > 1 - higher deletion 10^-1change for large RR
+  # >-1 - higher deletion chance for low RR
+  del.chance.vector.temp = sqrt(seq(1:nrow(dat.temp)))
+  del.chance.vector.temp = del.chance.vector.temp ^ deletion.chance.slope
   
   dat.temp$treat_sd = delete.function(dat.vector = dat.temp$treat_sd,
                                          deletion.rate = del.rate.temp,
@@ -195,33 +204,48 @@ run.over.all.methods = function(dat.raw , data.sample.size.percentage, imp.metho
 #############################################
 # config algorithm --------------------------
 
-#non-random deletion, 100% sample size
+#random deletion, 100% sample size
 
 df.final = run.over.all.methods(dat.raw = dat.raw,
                             data.sample.size.percentage = 1,
                             imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf"),
-                            deletion.chance.slope = 1,
-                            deletion.minimum = 0.2, 
+                            deletion.chance.slope = 0,
+                            deletion.minimum = 0.02, 
                             deletion.maximum = 0.98,
                             deletion.step = 0.01,
                             repetitions.per.step = 2, 
                             data.size = 1,
                             effect.size.metric = "ROM")
-write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_non_random_full_data.csv",
+
+
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_del-slope_0_full_data.csv",
             sep="\t",quote=F,dec=".",row.names = FALSE)
 
-test = df.final$grand_mean_ub - df.final$grand_mean_lb
-plot(test ~ factor(df.final$imputation_method))
 
 
+#higher deletion chance for SDs with low RR, 100% sample size
+df.final = run.over.all.methods(dat.raw = dat.raw,
+                                data.sample.size.percentage = 1,
+                                imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf"),
+                                deletion.chance.slope = -2,
+                                deletion.minimum = 0.02, 
+                                deletion.maximum = 0.98,
+                                deletion.step = 0.01,
+                                repetitions.per.step = 2, 
+                                data.size = 1,
+                                effect.size.metric = "ROM")
+
+
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_del-slope-2_full_data.csv",
+            sep="\t",quote=F,dec=".",row.names = FALSE)
 
 
 #############################################
-# all local variables in use - for debu -----
+# all local variables in use - for debug ----
 dat.raw = dat.raw
 data.sample.size.percentage = 1
 imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf")
-deletion.chance.slope = 1
+deletion.chance.slope = -2
 deletion.minimum = 0.1
 deletion.maximum = 0.9
 deletion.step = 0.1
@@ -231,7 +255,7 @@ effect.size.metric = "ROM"
 
 dat.raw = dat.raw
 data.sample.size.percentage = data.sample.size.percentage
-imputation.method.temp = method.temp
+imputation.method.temp = "mean"
 deletion.minimum = deletion.minimum
 deletion.maximum = deletion.maximum
 deletion.step = deletion.step
@@ -259,56 +283,97 @@ effect.size.metric = effect.size.metric
 #  "polyreg","polr","lda","cart","rf","ri")
 
 
+##################################################
+# read in results, add analysis with full data ---
 
-#correct.results
-dat.full = dat.raw
-dat.full = effect.size.calculation.function(data = dat.full,
-                                            effect.size.metric = effect.size.metric)
-dat.full = dat.full[which(dat.full$vi == 0),]
+df.results = read.table("C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_deletion-1_full_data.csv",
+                         sep="\t",dec=".",header=T)
 
+# results from rma. with full data
+dat.full = effect.size.calculation.function(data = dat.raw,effect.size.metric = "ROM")
 dat.full.rma.results = meta_analysis.function(dat.full)
-dat.full.rma.results
-data.missing.rma.results
+names(dat.full.rma.results) = c("full_grand_mean","full_grand_mean_lb","full_grand_mean_ub","full_sample_size_for_rma_calc")
 
+#append to df.results
+df.results = cbind(df.results,dat.full.rma.results)
 
+##################################################
+# plotting ---------------------------------------
 
-test.f = function(a=1){
-  print(a)
+smooth.ub.and.lb.for.plotting = function(data){
+  df.smooth.all = data.frame("deletion_method"=NA, "x" = NA,"y" = NA,"ymin" = NA,"ymax" = NA)[0,]
+  for(impute.method.temp in unique(df.results$imputation_method)){
+    gg.grand.mean = ggplot(subset(df.results,imputation_method %in% impute.method.temp),aes(deletion_rate,grand_mean)) + 
+      geom_smooth()
+    gg.grand.mean.lb = ggplot(subset(df.results,imputation_method %in% impute.method.temp),aes(deletion_rate,grand_mean_lb)) + 
+      geom_smooth()
+    gg.grand.mean.ub = ggplot(subset(df.results,imputation_method %in% impute.method.temp),aes(deletion_rate,grand_mean_ub)) + 
+      geom_smooth()
+    df.smooth.temp = data.frame("imputation_method" = as.character(impute.method.temp),
+                           "deletion_rate" = ggplot_build(gg.grand.mean)$data[[1]]$x,
+                           "grand_mean" = ggplot_build(gg.grand.mean)$data[[1]]$y,
+                           "grand_mean_lb" = ggplot_build(gg.grand.mean.lb)$data[[1]]$y,
+                           "grand_mean_ub" = ggplot_build(gg.grand.mean.ub)$data[[1]]$y)
+  df.smooth.all = rbind(df.smooth.all,df.smooth.temp)
+  }
+  return(df.smooth.all)
 }
 
-test.data.short = create.data.subset.function(test.data,3)
+plot.grand.means.function = function(df.results){
+  ggplot(data=df.results) +
+    #true grand mean
+    geom_ribbon(aes(x=deletion_rate,ymin=full_grand_mean_lb,ymax=full_grand_mean_ub),alpha=0.2) +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean),colour="white",size=2) +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean),colour="grey",size=1,linetype="dotted") +
+    # model results
+    geom_smooth(aes(x=deletion_rate,y=grand_mean),se=FALSE,colour="black",size=0.9) +
+    geom_smooth(aes(x=deletion_rate,y=grand_mean_lb),se=FALSE,colour="black",linetype="longdash",size=0.9) +
+    geom_smooth(aes(x=deletion_rate,y=grand_mean_ub),se=FALSE,colour="black",linetype="longdash",size=0.9) +
+    #split data
+    facet_grid(. ~ imputation_method)  +
+    theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+    
+}    
+plot.grand.means.function(df.results)
 
 
-test.data.missing$control_sd = delete.function(dat.vector = test.data.missing$control_sd,
-                                               deletion.rate = 0.2,
-                                               deletion.chance.vector = rep(1,5))
 
-test.data.missing$control_sd = impute.function(data.with.missing = test.data.missing[,c(1,2,3)],
-                                              column.name.with.missing.values = "control_sd",
-                                              imputation.method = "pmm")
+plot.smooth.grand.means.function = function(data){
 
-test.data.missing = effect.size.calculation.function(data = test.data.missing,
-                                                     effect.size.metric = "ROM")
-
-test.data.missing.rma.results = meta_analysis.function(test.data.missing)
-
+  data.smooth = smooth.ub.and.lb.for.plotting(data)
+  data.smooth$full_grand_mean = df.results$full_grand_mean[1]
+  data.smooth$full_grand_mean_lb = df.results$full_grand_mean_lb[1]
+  data.smooth$full_grand_mean_ub = df.results$full_grand_mean_ub[1]
   
+  plot=   ggplot(data=data.smooth) +
+    # model results
+    geom_ribbon(aes(x=deletion_rate,ymax=grand_mean_ub,ymin=grand_mean_lb),alpha = 0.2) +
+    geom_line(aes(x=deletion_rate,y=grand_mean),colour="white",size=2) +
+    geom_line(aes(x=deletion_rate,y=grand_mean),colour="black",size=0.5) +
+    #true grand mean
+    geom_line(aes(x=deletion_rate,y=full_grand_mean),colour="black",size=0.8,linetype="dotdash") +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean_lb),colour="black",size=1,linetype="dotted") +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean_ub),colour="black",size=1,linetype="dotted") +
+        #split data
+    facet_grid(. ~ imputation_method)  +
+    theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
   
+  return(plot)
+}    
 
-#mean_control = dat.raw$Mean..control.
-#n_control = dat.raw$plot.number..control. 
-#sd_control = dat.raw$SE..control. 
-#mean_managed = dat.raw$Mean..managed.
-#n_managed  = dat.raw$plot.number..managed.
-#sd_managed = dat.raw$SE..managed.
-#sd_or_se = "sd"
-#log_trans = "no"
-#del_random = "yes"
-#del.min = 0.02
-#del.max = 0.5
-#del.step = 0.005
-#del.rate=0.5
-#methods = c("na.omit","sample","mean","pmm","norm.nob","norm.boot", "norm.predict", "norm","cart")
+plot.smooth.grand.means.function(df.results)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
