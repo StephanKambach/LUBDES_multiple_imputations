@@ -218,7 +218,7 @@ df.final = run.over.all.methods(dat.raw = dat.raw,
                             effect.size.metric = "ROM")
 
 
-write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_del-slope_0_full_data.csv",
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\results\\all_methods_del_slope_0_data_1.csv",
             sep="\t",quote=F,dec=".",row.names = FALSE)
 
 
@@ -236,8 +236,60 @@ df.final = run.over.all.methods(dat.raw = dat.raw,
                                 effect.size.metric = "ROM")
 
 
-write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_del-slope-2_full_data.csv",
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\results\\all_methods_del_slope_2_data_1.csv",
             sep="\t",quote=F,dec=".",row.names = FALSE)
+
+
+
+#random deletion, 50% sample size
+df.final = run.over.all.methods(dat.raw = dat.raw,
+                                data.sample.size.percentage = 1,
+                                imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf"),
+                                deletion.chance.slope = 0,
+                                deletion.minimum = 0.02, 
+                                deletion.maximum = 0.98,
+                                deletion.step = 0.01,
+                                repetitions.per.step = 2, 
+                                data.size = 0.5,
+                                effect.size.metric = "ROM")
+
+
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\results\\all_methods_del_slope_0_data_0-5.csv",
+            sep="\t",quote=F,dec=".",row.names = FALSE)
+
+
+#random deletion, 50% sample size
+df.final = run.over.all.methods(dat.raw = dat.raw,
+                                data.sample.size.percentage = 1,
+                                imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf"),
+                                deletion.chance.slope = 0,
+                                deletion.minimum = 0.02, 
+                                deletion.maximum = 0.98,
+                                deletion.step = 0.01,
+                                repetitions.per.step = 2, 
+                                data.size = 0.25,
+                                effect.size.metric = "ROM")
+
+
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\results\\all_methods_del_slope_0_data_0-25.csv",
+            sep="\t",quote=F,dec=".",row.names = FALSE)
+
+#random deletion, 50% sample size
+df.final = run.over.all.methods(dat.raw = dat.raw,
+                                data.sample.size.percentage = 1,
+                                imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf"),
+                                deletion.chance.slope = 0,
+                                deletion.minimum = 0.02, 
+                                deletion.maximum = 0.98,
+                                deletion.step = 0.01,
+                                repetitions.per.step = 2, 
+                                data.size = 0.1,
+                                effect.size.metric = "ROM")
+
+
+write.table(df.final,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\results\\all_methods_del_slope_0_data_0-1.csv",
+            sep="\t",quote=F,dec=".",row.names = FALSE)
+
 
 
 #############################################
@@ -285,6 +337,104 @@ effect.size.metric = effect.size.metric
 
 ##################################################
 # read in results, add analysis with full data ---
+
+get.all.result.filenames = function(path){
+  complete.file.names = character()
+  for(i in 1:length(list.files(path))){
+    complete.file.names[i] = paste(c(path,list.files(path)[i]),collapse="/")
+    
+  }
+  return(complete.file.names)
+}
+
+all.results.files = get.all.result.filenames("C:/Users/Agando/Desktop/aktuelle Arbeiten/SESYNC_multiple_imputation/LUBDES_multiple_imputations/results")
+
+load.all.results.in.list = function(all.results.files){
+  all.results = list()
+  for(i in 1:length(load.all.results.in.list)){
+    all.results[[i]] = read.csv(all.results.files[i],sep="\t",header=T,dec=".")
+  }
+  return(all.results)
+}
+
+
+all.results = lapply(all.results.files,function(x) read.csv(file=x,sep="\t",header=T,dec="."))
+
+
+##################################################
+# define plotting funtions ----------------------
+
+smooth.ub.and.lb.for.plotting = function(data){
+  df.smooth.all = data.frame("deletion_method"=NA, "x" = NA,"y" = NA,"ymin" = NA,"ymax" = NA)[0,]
+  for(impute.method.temp in unique(df.results$imputation_method)){
+    gg.grand.mean = ggplot(subset(df.results,imputation_method %in% impute.method.temp),aes(deletion_rate,grand_mean)) + 
+      geom_smooth()
+    gg.grand.mean.lb = ggplot(subset(df.results,imputation_method %in% impute.method.temp),aes(deletion_rate,grand_mean_lb)) + 
+      geom_smooth()
+    gg.grand.mean.ub = ggplot(subset(df.results,imputation_method %in% impute.method.temp),aes(deletion_rate,grand_mean_ub)) + 
+      geom_smooth()
+    df.smooth.temp = data.frame("imputation_method" = as.character(impute.method.temp),
+                                "deletion_rate" = ggplot_build(gg.grand.mean)$data[[1]]$x,
+                                "grand_mean" = ggplot_build(gg.grand.mean)$data[[1]]$y,
+                                "grand_mean_lb" = ggplot_build(gg.grand.mean.lb)$data[[1]]$y,
+                                "grand_mean_ub" = ggplot_build(gg.grand.mean.ub)$data[[1]]$y)
+    df.smooth.all = rbind(df.smooth.all,df.smooth.temp)
+  }
+  return(df.smooth.all)
+}
+
+plot.smooth.grand.means.function = function(data){
+  
+  data.smooth = smooth.ub.and.lb.for.plotting(data)
+  data.smooth$full_grand_mean = df.results$full_grand_mean[1]
+  data.smooth$full_grand_mean_lb = df.results$full_grand_mean_lb[1]
+  data.smooth$full_grand_mean_ub = df.results$full_grand_mean_ub[1]
+  
+  plot=   ggplot(data=data.smooth) +
+    # model results
+    geom_ribbon(aes(x=deletion_rate,ymax=grand_mean_ub,ymin=grand_mean_lb),alpha = 0.2) +
+    geom_line(aes(x=deletion_rate,y=grand_mean),colour="white",size=2) +
+    geom_line(aes(x=deletion_rate,y=grand_mean),colour="black",size=0.5) +
+    #true grand mean
+    geom_line(aes(x=deletion_rate,y=full_grand_mean),colour="black",size=0.8,linetype="dotdash") +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean_lb),colour="black",size=1,linetype="dotted") +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean_ub),colour="black",size=1,linetype="dotted") +
+    #split data
+    facet_grid(. ~ imputation_method)  +
+    theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+  
+  return(plot)
+}    
+
+plot.grand.means.function = function(df.results){
+  ggplot(data=df.results) +
+    #true grand mean
+    geom_ribbon(aes(x=deletion_rate,ymin=full_grand_mean_lb,ymax=full_grand_mean_ub),alpha=0.2) +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean),colour="white",size=2) +
+    geom_line(aes(x=deletion_rate,y=full_grand_mean),colour="grey",size=1,linetype="dotted") +
+    # model results
+    geom_smooth(aes(x=deletion_rate,y=grand_mean),se=FALSE,colour="black",size=0.9) +
+    geom_smooth(aes(x=deletion_rate,y=grand_mean_lb),se=FALSE,colour="black",linetype="longdash",size=0.9) +
+    geom_smooth(aes(x=deletion_rate,y=grand_mean_ub),se=FALSE,colour="black",linetype="longdash",size=0.9) +
+    #split data
+    facet_grid(. ~ imputation_method)  +
+    theme_bw() + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+  
+}  
+
+##############################################
+# plot all results in separate .svg-files ---
+
+
+for (results.to.plot in result.files){
+  test = paste("C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\results\\",results.to.plot,collapse="")
+  df.results = read.table(test,
+                          sep="\t",dec=".",header=T)
+  
+}
+
+ldf <- lapply(filenames, read.csv)
+
 
 df.results = read.table("C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_multiple_imputation\\LUBDES_multiple_imputations\\all_methods_deletion-1_full_data.csv",
                          sep="\t",dec=".",header=T)
