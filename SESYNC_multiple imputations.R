@@ -319,33 +319,33 @@ write.table(df.results,"C:\\Users\\Agando\\Desktop\\aktuelle Arbeiten\\SESYNC_mu
 
 #############################################
 # all local variables in use - for debug ----
-dat.raw = dat.raw
-data.sample.size.percentage = 1
-imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf")
-deletion.chance.slope = -2
-deletion.minimum = 0.1
-deletion.maximum = 0.9
-deletion.step = 0.1
-repetitions.per.step = 0.1 
-effect.size.metric = "ROM"
+#dat.raw = dat.raw
+#data.sample.size.percentage = 1
+#imp.methods.vector = c("sample","mean","pmm","norm.nob","norm.boot","norm.predict","norm","cart","rf")
+#deletion.chance.slope = -2
+#deletion.minimum = 0.1
+#deletion.maximum = 0.9
+#deletion.step = 0.1
+#repetitions.per.step = 0.1 
+#effect.size.metric = "ROM"
 
-dat.raw = dat.raw
-data.sample.size.percentage = data.sample.size.percentage
-imputation.method.temp = "mean"
-deletion.minimum = deletion.minimum
-deletion.maximum = deletion.maximum
-deletion.step = deletion.step
-repetitions.per.step = repetitions.per.step
-deletion.chance.slope = deletion.chance.slope
-effect.size.metric = effect.size.metric
+#dat.raw = dat.raw
+#data.sample.size.percentage = data.sample.size.percentage
+#imputation.method.temp = "mean"
+#deletion.minimum = deletion.minimum
+#deletion.maximum = deletion.maximum
+#deletion.step = deletion.step
+#repetitions.per.step = repetitions.per.step
+#deletion.chance.slope = deletion.chance.slope
+#effect.size.metric = effect.size.metric
 
-del.rate.temp = 0.5
-dat.temp =dat.raw
-data.sample.size.percentage = data.sample.size.percentage
-del.rate.temp = del.rate.temp
-deletion.chance.slope = deletion.chance.slope
-imputation.method.temp = imputation.method.temp
-effect.size.metric = effect.size.metric
+#del.rate.temp = 0.5
+#dat.temp =dat.raw
+#data.sample.size.percentage = data.sample.size.percentage
+#del.rate.temp = del.rate.temp
+#deletion.chance.slope = deletion.chance.slope
+#imputation.method.temp = imputation.method.temp
+#effect.size.metric = effect.size.metric
 
 ##################################################
 
